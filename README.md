@@ -83,11 +83,71 @@ Windows icin aktivasyon komutu:
 | macOS    | `brew install cloudflare-warp` |
 | Linux    | [Resmi Dokümantasyon](https://developers.cloudflare.com/warp-client/get-started/linux/) |
 
-## Standalone Build (PyInstaller)
+## İndirme (Hazır Paketler)
+
+En son sürümü [GitHub Releases](https://github.com/zubeyralmaho/gsbwifi-bypass-desktop/releases/latest) sayfasından indirin:
+
+| Platform | Dosya | Açıklama |
+|----------|-------|----------|
+| Windows  | `GSBWiFi-windows.zip` | `.exe` — Python gerekmez |
+| macOS    | `GSBWiFi-macos.dmg`   | `.app` bundle — sürükle & bırak |
+| Linux    | `GSBWiFi-linux.tar.gz`| Tek binary — `chmod +x` ile çalıştır |
+
+### Linux kurulumu
 
 ```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed --name GSBWiFi app.py
+tar -xzf GSBWiFi-linux.tar.gz
+chmod +x GSBWiFi
+./GSBWiFi
+```
+
+---
+
+## Standalone Build (Geliştiriciler için)
+
+### Gereksinimler
+
+```bash
+pip install -r requirements.txt
+pip install -r build-requirements.txt
+```
+
+### İkon üretimi
+
+```bash
+python packaging/create_icons.py
+```
+
+### Paket oluşturma
+
+```bash
+# Tüm platformlar
+make build
+
+# macOS — .dmg dosyası
+make dmg
+
+# Linux — tar.gz paketi
+make package-linux
+
+# Temizlik
+make clean
+```
+
+Veya doğrudan PyInstaller ile:
+
+```bash
+pyinstaller GSBWiFi.spec
+```
+
+### Otomatik CI/CD
+
+`v*` etiketiyle push yapıldığında GitHub Actions otomatik olarak 3 platform için
+paket oluşturur ve GitHub Release'e yükler:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ## Geliştiriciler

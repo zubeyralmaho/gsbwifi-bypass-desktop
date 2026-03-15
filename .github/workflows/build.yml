@@ -1,0 +1,171 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  # ------------------------------------------------------------------ #
+  # Windows — tek dosya .exe                                             #
+  # ------------------------------------------------------------------ #
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install build tools
+        run: pip install -r build-requirements.txt
+
+      - name: Generate icons
+        run: python packaging/create_icons.py
+
+      - name: Build executable
+        run: pyinstaller GSBWiFi.spec
+
+      - name: Package artifact
+        run: |
+          mkdir -p release
+          Compress-Archive -Path dist\GSBWiFi.exe -DestinationPath release\GSBWiFi-windows.zip
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GSBWiFi-windows
+          path: release/GSBWiFi-windows.zip
+          retention-days: 7
+
+  # ------------------------------------------------------------------ #
+  # macOS — .app bundle + .dmg                                          #
+  # ------------------------------------------------------------------ #
+  build-macos:
+    name: Build (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install build tools
+        run: pip install -r build-requirements.txt
+
+      - name: Generate icons
+        run: python packaging/create_icons.py
+
+      - name: Build .app bundle
+        run: pyinstaller GSBWiFi.spec
+
+      - name: Create .dmg
+        run: |
+          hdiutil create \
+            -volname "GSBWIFI Bypass" \
+            -srcfolder dist/GSBWiFi.app \
+            -ov \
+            -format UDZO \
+            GSBWiFi-macos.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GSBWiFi-macos
+          path: GSBWiFi-macos.dmg
+          retention-days: 7
+
+  # ------------------------------------------------------------------ #
+  # Linux — tek dosya binary                                            #
+  # ------------------------------------------------------------------ #
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            python3-tk \
+            libnotify-bin \
+            libsecret-1-dev \
+            libdbus-1-dev \
+            libglib2.0-dev \
+            upx-ucl
+
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install build tools
+        run: pip install -r build-requirements.txt
+
+      - name: Generate icons
+        run: python packaging/create_icons.py
+
+      - name: Build executable
+        run: pyinstaller GSBWiFi.spec
+
+      - name: Package artifact
+        run: |
+          mkdir -p release
+          tar -czf release/GSBWiFi-linux.tar.gz -C dist GSBWiFi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GSBWiFi-linux
+          path: release/GSBWiFi-linux.tar.gz
+          retention-days: 7
+
+  # ------------------------------------------------------------------ #
+  # Release — sadece v* tag push'ta çalışır                            #
+  # ------------------------------------------------------------------ #
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "GSBWIFI Bypass ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/GSBWiFi-windows/GSBWiFi-windows.zip
+            artifacts/GSBWiFi-macos/GSBWiFi-macos.dmg
+            artifacts/GSBWiFi-linux/GSBWiFi-linux.tar.gz

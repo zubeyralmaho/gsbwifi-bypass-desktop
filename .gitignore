@@ -14,3 +14,19 @@ env/
 
 # Keep local credentials out of public repo
 config.ini
+
+# PyInstaller build artifacts
+dist/
+build/
+*.spec.bak
+
+# Release packages
+release/
+*.dmg
+*.zip
+*.tar.gz
+
+# Generated icons (reproduced by packaging/create_icons.py)
+assets/icon.ico
+assets/icon.icns
+assets/icon.png
