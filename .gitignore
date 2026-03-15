@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+env/
+.DS_Store
+*.log
+*.tmp
+.idea/
+.vscode/
+
+# Keep local credentials out of public repo
+config.ini
