@@ -104,6 +104,18 @@ class SettingsFrame(ctk.CTkFrame):
         ).grid(row=row, column=1, sticky="e", padx=20, pady=8)
         row += 1
 
+        ctk.CTkLabel(
+            card, text="Bildirimler", font=ctk.CTkFont(size=13)
+        ).grid(row=row, column=0, sticky="w", padx=20, pady=8)
+        self.notifications_var = ctk.BooleanVar(
+            value=self.app.settings.get("notifications_enabled")
+        )
+        ctk.CTkSwitch(
+            card, text="", variable=self.notifications_var,
+            command=self._on_notifications_change
+        ).grid(row=row, column=1, sticky="e", padx=20, pady=8)
+        row += 1
+
         self.btn_clear_creds = ctk.CTkButton(
             card, text="Kayıtlı Bilgileri Temizle", width=180,
             command=self._clear_credentials,
@@ -177,6 +189,9 @@ class SettingsFrame(ctk.CTkFrame):
 
     def _on_remember_change(self) -> None:
         self.app.settings.set("remember_credentials", self.remember_var.get())
+
+    def _on_notifications_change(self) -> None:
+        self.app.settings.set("notifications_enabled", self.notifications_var.get())
 
     def _clear_credentials(self) -> None:
         self.app.settings.clear_credentials()

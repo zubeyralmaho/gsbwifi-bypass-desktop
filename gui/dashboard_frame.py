@@ -1,5 +1,5 @@
 """
-Dashboard ekranı — durum göstergeleri, aksiyon butonları ve log paneli.
+Dashboard ekranı — durum göstergeleri, aksiyon butonları, istatistik ve log paneli.
 """
 import customtkinter as ctk
 
@@ -23,9 +23,9 @@ class DashboardFrame(ctk.CTkFrame):
         self.app = app
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(3, weight=1)  # Log paneli row 3'te
 
-        # Durum kartları
+        # Row 0: Durum kartları
         status_row = ctk.CTkFrame(self, fg_color="transparent")
         status_row.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         status_row.grid_columnconfigure((0, 1, 2), weight=1)
@@ -39,7 +39,7 @@ class DashboardFrame(ctk.CTkFrame):
         self.monitor_status = StatusIndicator(status_row, title="Otomatik Bağlanma")
         self.monitor_status.grid(row=0, column=2, sticky="ew", padx=(6, 0))
 
-        # Aksiyon butonları
+        # Row 1: Aksiyon butonları
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 8))
 
@@ -71,9 +71,46 @@ class DashboardFrame(ctk.CTkFrame):
         )
         self.btn_auto_reconnect.pack(side="left")
 
-        # Log paneli
+        # Row 2: İstatistik kartı
+        stats_card = ctk.CTkFrame(self, corner_radius=10, fg_color=("gray92", "gray14"))
+        stats_card.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
+        stats_card.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
+
+        ctk.CTkLabel(
+            stats_card, text="İstatistik",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="gray50"
+        ).grid(row=0, column=0, padx=(14, 4), pady=8, sticky="w")
+
+        self._lbl_total = ctk.CTkLabel(
+            stats_card, text="Toplam: —",
+            font=ctk.CTkFont(size=11)
+        )
+        self._lbl_total.grid(row=0, column=1, padx=4, pady=8)
+
+        self._lbl_success = ctk.CTkLabel(
+            stats_card, text="Başarılı: —",
+            font=ctk.CTkFont(size=11)
+        )
+        self._lbl_success.grid(row=0, column=2, padx=4, pady=8)
+
+        self._lbl_avg = ctk.CTkLabel(
+            stats_card, text="Ort. Süre: —",
+            font=ctk.CTkFont(size=11)
+        )
+        self._lbl_avg.grid(row=0, column=3, padx=4, pady=8)
+
+        self.btn_clear_stats = ctk.CTkButton(
+            stats_card, text="Temizle", width=70,
+            command=self._clear_stats,
+            fg_color=("gray75", "gray25"), hover_color=("gray65", "gray35"),
+            font=ctk.CTkFont(size=11)
+        )
+        self.btn_clear_stats.grid(row=0, column=4, padx=(4, 14), pady=6)
+
+        # Row 3: Log paneli
         self.log_panel = LogPanel(self)
-        self.log_panel.grid(row=2, column=0, sticky="nsew", padx=16, pady=(0, 16))
+        self.log_panel.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 16))
 
         # Log callback kaydı
         self.app.register_log_callback(self._on_log)
@@ -91,7 +128,7 @@ class DashboardFrame(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def refresh_status(self) -> None:
-        """Tüm durum göstergelerini günceller."""
+        """Tüm durum göstergelerini ve istatistik kartını günceller."""
         has_internet = False
         try:
             has_internet = self.app.auth_service.check_internet()
@@ -121,6 +158,30 @@ class DashboardFrame(ctk.CTkFrame):
                 text="Otomatik Bağlanma: Kapalı",
                 fg_color=("gray70", "gray30"), hover_color=("gray60", "gray40")
             )
+
+        self._refresh_stats()
+
+    def _refresh_stats(self) -> None:
+        """İstatistik kartını son verilerle günceller."""
+        stats = self.app.history.get_stats()
+        total = stats["total"]
+        if total == 0:
+            self._lbl_total.configure(text="Toplam: 0")
+            self._lbl_success.configure(text="Başarılı: —")
+            self._lbl_avg.configure(text="Ort. Süre: —")
+            return
+
+        self._lbl_total.configure(text=f"Toplam: {total}")
+        self._lbl_success.configure(
+            text=f"Başarılı: {stats['success']} (%{stats['rate']})"
+        )
+        avg = stats["avg_duration"]
+        self._lbl_avg.configure(text=f"Ort. Süre: {avg}sn")
+
+    def _clear_stats(self) -> None:
+        self.app.history.clear()
+        self._refresh_stats()
+        self.log_panel.append("Bağlantı istatistikleri temizlendi.", "info")
 
     # ------------------------------------------------------------------
     # Aksiyon handler'ları

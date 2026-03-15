@@ -191,6 +191,7 @@ class LoginFrame(ctk.CTkFrame):
         self.btn_login.configure(state="normal")
         self.btn_login_warp.configure(state="normal")
         self.app.log("success", f"GSBWIFI'ye {n}. denemede bağlanıldı!")
+        self.app.notifier.send("GSBWIFI Bypass", f"Bağlandı! ({n}. denemede)")
 
         if self._with_warp:
             if not self.app.warp_service.is_installed():

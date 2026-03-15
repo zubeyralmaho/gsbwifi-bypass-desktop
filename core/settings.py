@@ -50,6 +50,8 @@ class Settings:
         "reconnect_interval": 15,
         "appearance_mode": "System",
         "login_interval": 0.3,
+        "notifications_enabled": True,
+        "history_enabled": True,
     }
 
     def __init__(self) -> None:

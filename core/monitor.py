@@ -2,19 +2,38 @@
 Otomatik yeniden bağlanma monitörü.
 """
 import threading
-from typing import Callable, Optional, Tuple
+from datetime import datetime
+from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 from core.auth import AuthService
+
+if TYPE_CHECKING:
+    from core.history import ConnectionHistory
+    from core.notifier import NotificationService
+    from core.settings import Settings
 
 
 class ReconnectMonitor:
     """
     Arka planda internet bağlantısını izler; kopma durumunda
     AuthService üzerinden otomatik yeniden giriş yapar.
+
+    Opsiyonel olarak:
+    - Sistem bildirimleri gönderir (NotificationService)
+    - Yeniden bağlanma olaylarını kaydeder (ConnectionHistory)
     """
 
-    def __init__(self, auth_service: AuthService) -> None:
+    def __init__(
+        self,
+        auth_service: AuthService,
+        history: Optional["ConnectionHistory"] = None,
+        notifier: Optional["NotificationService"] = None,
+        settings: Optional["Settings"] = None,
+    ) -> None:
         self._auth = auth_service
+        self._history = history
+        self._notifier = notifier
+        self._settings = settings
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._credentials: Optional[Tuple[str, str]] = None
@@ -50,25 +69,65 @@ class ReconnectMonitor:
         """Monitörü durdurur (thread sonraki döngüde sonlanır)."""
         self._stop_event.set()
 
+    def _notify_enabled(self) -> bool:
+        """Bildirimler etkin mi?"""
+        return self._notifier is not None and (
+            self._settings is None or self._settings.get("notifications_enabled")
+        )
+
     def _run(self) -> None:
         """Monitör döngüsü — arka plan thread'inde çalışır."""
         while not self._stop_event.wait(self._interval):
             try:
                 if not self._auth.check_internet():
+                    drop_time = datetime.now()
+                    attempt_count = [0]
+
                     self._notify_status("Bağlantı kesildi, yeniden giriş yapılıyor...")
+
+                    if self._notify_enabled():
+                        self._notifier.send(
+                            "GSBWIFI Bypass",
+                            "Bağlantı kesildi, yeniden bağlanılıyor..."
+                        )
+
                     with self._credentials_lock:
                         creds = self._credentials
-                    if creds:
-                        self._auth.login(
-                            creds[0],
-                            creds[1],
-                            on_attempt=lambda n, msg: self._notify_attempt(
-                                f"Deneme {n}: {msg}"
-                            ),
-                            on_success=lambda n: self._notify_status(
-                                f"Yeniden bağlandı ({n}. denemede)"
-                            ),
-                        )
+
+                    if not creds:
+                        continue
+
+                    def on_attempt(n: int, msg: str) -> None:
+                        attempt_count[0] = n
+                        self._notify_attempt(f"Deneme {n}: {msg}")
+
+                    def on_success(n: int) -> None:
+                        duration = (datetime.now() - drop_time).total_seconds()
+                        self._notify_status(f"Yeniden bağlandı ({n}. denemede)")
+
+                        if self._notify_enabled():
+                            self._notifier.send(
+                                "GSBWIFI Bypass",
+                                f"Yeniden bağlandı! ({n}. denemede, {duration:.0f}sn)"
+                            )
+
+                        if self._history and (
+                            self._settings is None
+                            or self._settings.get("history_enabled")
+                        ):
+                            self._history.add_reconnect(
+                                attempts=n,
+                                duration=duration,
+                                success=True,
+                            )
+
+                    self._auth.login(
+                        creds[0],
+                        creds[1],
+                        on_attempt=on_attempt,
+                        on_success=on_success,
+                    )
+
             except Exception as e:
                 # Thread'in sessizce ölmesini önle; hatayı bildir
                 self._notify_status(f"Monitor hatası: {e}")

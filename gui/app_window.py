@@ -8,8 +8,10 @@ import customtkinter as ctk
 
 from core.auth import AuthService
 from core.warp import WarpService
-from core.settings import Settings
+from core.settings import Settings, get_data_dir
 from core.monitor import ReconnectMonitor
+from core.notifier import NotificationService
+from core.history import ConnectionHistory
 from core.constants import (
     WINDOW_WIDTH,
     WINDOW_HEIGHT,
@@ -39,7 +41,14 @@ class AppWindow(ctk.CTk):
         self.auth_service = AuthService()
         self.warp_service = WarpService()
         self.settings = Settings()
-        self.monitor = ReconnectMonitor(self.auth_service)
+        self.notifier = NotificationService(self.settings)
+        self.history = ConnectionHistory(get_data_dir())
+        self.monitor = ReconnectMonitor(
+            self.auth_service,
+            history=self.history,
+            notifier=self.notifier,
+            settings=self.settings,
+        )
 
         # Giriş sonrası mevcut kimlik bilgileri
         self.current_tc: str = ""
