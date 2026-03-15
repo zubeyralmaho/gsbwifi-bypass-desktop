@@ -2,6 +2,18 @@
 
 GSBWIFI ağlarında yaşanan "captive portal" erişim sorunlarına ve DPI (Deep Packet Inspection) tabanlı hız kısıtlamalarına (QoS) çözüm sağlayan cross-platform masaüstü uygulaması.
 
+## Repo
+
+- **GitHub (Public):** https://github.com/zubeyralmaho/gsbwifi-bypass-desktop
+
+## Ekran Goruntusu
+
+Asagidaki dosyayi eklediginizde README otomatik olarak onizleme gosterecektir:
+
+`assets/app-preview.png`
+
+![GSBWIFI Desktop UI](assets/app-preview.png)
+
 ## Bu Uygulama Ne Yapar?
 
 - **Basit ISS kısıtlamalarını aşmaya yardımcı olur:** Ağ trafiğini Cloudflare WARP üzerinden tünelleyerek bazı temel trafik şekillendirme/engelleme kurallarının etkisini azaltır.
@@ -18,11 +30,29 @@ GSBWIFI ağlarında yaşanan "captive portal" erişim sorunlarına ve DPI (Deep 
 - **Güvenli Kimlik Yönetimi:** Kimlik bilgileri isteğe bağlı olarak lokal olarak saklanır.
 - **Cross-Platform:** Windows, macOS ve Linux desteği.
 
+## Hizli Baslangic
+
+```bash
+git clone https://github.com/zubeyralmaho/gsbwifi-bypass-desktop.git
+cd gsbwifi-bypass
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+pip install -r requirements.txt
+cp config.example.ini config.ini
+python app.py
+```
+
+Windows icin aktivasyon komutu:
+
+```powershell
+.venv\Scripts\activate
+```
+
 ## Kurulum
 
 1. Repoyu klonlayın:
    ```bash
-   git clone https://github.com/zubeyralmaho/gsbwifi-bypass.git
+   git clone https://github.com/zubeyralmaho/gsbwifi-bypass-desktop.git
    cd gsbwifi-bypass
    ```
 
