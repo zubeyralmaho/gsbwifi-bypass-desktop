@@ -1,8 +1,18 @@
+"""
+Cloudflare WARP CLI entegrasyonu.
+"""
 import os
 import platform
 import shutil
 import subprocess
 import glob as globmod
+from typing import Callable, List, Optional, Tuple
+
+from core.constants import (
+    WARP_CONNECT_TIMEOUT,
+    WARP_INSTALL_TIMEOUT,
+    WarpStatus,
+)
 
 
 # macOS'ta warp-cli bilinen konumlar
@@ -11,7 +21,7 @@ _MACOS_WARP_PATHS = [
     "/Applications/Cloudflare WARP.app/Contents/Resources/warp-cli",
 ]
 
-# Linux'ta bilinen konum
+# Linux'ta bilinen konumlar
 _LINUX_WARP_PATHS = [
     "/usr/bin/warp-cli",
     "/usr/local/bin/warp-cli",
@@ -19,17 +29,23 @@ _LINUX_WARP_PATHS = [
 
 
 class WarpService:
-    def __init__(self):
-        self._warp_cli_path = self._find_warp_cli()
+    """Cloudflare WARP CLI'yi sarar; kurulum, bağlantı ve durum sorgulama sağlar."""
 
-    def _find_warp_cli(self):
-        # Önce PATH'te ara
+    def __init__(self) -> None:
+        self._warp_cli_path: Optional[str] = self._find_warp_cli()
+
+    # ------------------------------------------------------------------
+    # Durum sorgulama
+    # ------------------------------------------------------------------
+
+    def _find_warp_cli(self) -> Optional[str]:
+        """warp-cli yürütülebilir dosyasını PATH'te ve bilinen konumlarda arar."""
         found = shutil.which("warp-cli")
         if found:
             return found
 
         system = platform.system()
-        search_paths = []
+        search_paths: List[str] = []
         if system == "Darwin":
             search_paths = _MACOS_WARP_PATHS
         elif system == "Linux":
@@ -41,59 +57,99 @@ class WarpService:
 
         return None
 
-    def is_installed(self):
+    def is_installed(self) -> bool:
+        """WARP CLI'nin kurulu olup olmadığını döndürür."""
         self._warp_cli_path = self._find_warp_cli()
         return self._warp_cli_path is not None
 
-    def get_status(self):
+    def get_status(self) -> str:
+        """
+        Mevcut WARP bağlantı durumunu döndürür.
+
+        Returns:
+            WarpStatus değerlerinden biri (str olarak).
+        """
         if not self.is_installed():
-            return "Not Installed"
+            return WarpStatus.NOT_INSTALLED
         try:
             result = subprocess.run(
                 [self._warp_cli_path, "status"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=WARP_CONNECT_TIMEOUT,
             )
             if "Connected" in result.stdout:
-                return "Connected"
-            return "Disconnected"
-        except Exception:
-            return "Unknown"
+                return WarpStatus.CONNECTED
+            return WarpStatus.DISCONNECTED
+        except subprocess.TimeoutExpired:
+            return WarpStatus.UNKNOWN
+        except OSError:
+            return WarpStatus.UNKNOWN
 
-    def connect(self):
+    # ------------------------------------------------------------------
+    # Bağlantı yönetimi
+    # ------------------------------------------------------------------
+
+    def _run_warp_command(
+        self, *args: str, timeout: int = WARP_CONNECT_TIMEOUT
+    ) -> Tuple[bool, str]:
+        """
+        Ortak WARP CLI komut çalıştırıcı.
+
+        Args:
+            *args: warp-cli'ye geçirilecek argümanlar (ör. "connect").
+            timeout: Saniye cinsinden maksimum bekleme süresi.
+
+        Returns:
+            (başarı, mesaj) tuple'ı.
+        """
         if not self.is_installed():
             return False, "WARP kurulu değil"
         try:
             result = subprocess.run(
-                [self._warp_cli_path, "connect"],
+                [self._warp_cli_path, *args],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=timeout,
             )
             if result.returncode == 0:
-                return True, "WARP bağlantısı başlatıldı"
-            return False, result.stderr.strip() or "Bağlantı başarısız"
-        except Exception as e:
+                return True, result.stdout.strip()
+            return False, result.stderr.strip() or result.stdout.strip() or "Komut başarısız"
+        except subprocess.TimeoutExpired:
+            return False, "Komut zaman aşımına uğradı"
+        except OSError as e:
             return False, str(e)
 
-    def disconnect(self):
-        if not self.is_installed():
-            return False, "WARP kurulu değil"
-        try:
-            result = subprocess.run(
-                [self._warp_cli_path, "disconnect"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                return True, "WARP bağlantısı kesildi"
-            return False, result.stderr.strip() or "Bağlantı kesilemedi"
-        except Exception as e:
-            return False, str(e)
+    def connect(self) -> Tuple[bool, str]:
+        """WARP bağlantısını başlatır."""
+        success, msg = self._run_warp_command("connect")
+        if success:
+            return True, "WARP bağlantısı başlatıldı"
+        return False, msg or "Bağlantı başarısız"
 
-    def auto_install(self, on_output=None):
+    def disconnect(self) -> Tuple[bool, str]:
+        """WARP bağlantısını keser."""
+        success, msg = self._run_warp_command("disconnect")
+        if success:
+            return True, "WARP bağlantısı kesildi"
+        return False, msg or "Bağlantı kesilemedi"
+
+    # ------------------------------------------------------------------
+    # Kurulum
+    # ------------------------------------------------------------------
+
+    def auto_install(
+        self, on_output: Optional[Callable[[str], None]] = None
+    ) -> Tuple[bool, str]:
+        """
+        Platforma göre WARP'ı otomatik kurar.
+
+        Args:
+            on_output: Kurulum çıktısı için satır bazlı callback.
+
+        Returns:
+            (başarı, mesaj) tuple'ı.
+        """
         system = platform.system()
         try:
             if system == "Windows":
@@ -104,44 +160,41 @@ class WarpService:
                 )
                 if success:
                     self._warp_cli_path = self._find_warp_cli()
-                return success, msg if not success else "WARP başarıyla kuruldu"
+                return success, "WARP başarıyla kuruldu" if success else msg
 
-            elif system == "Darwin":
+            if system == "Darwin":
                 return self._install_macos(on_output)
 
-            else:
-                return self._install_linux(on_output)
+            return self._install_linux(on_output)
 
         except Exception as e:
             return False, f"Kurulum hatası: {e}"
 
-    def _install_macos(self, on_output=None):
-        # Adım 1: brew ile .pkg dosyasını indir
-        if shutil.which("brew"):
-            success, msg = self._run_install(
-                ["brew", "install", "--cask", "cloudflare-warp"],
-                on_output,
-            )
-            if not success and "already installed" not in msg.lower():
-                return False, msg
-        else:
+    def _install_macos(
+        self, on_output: Optional[Callable[[str], None]] = None
+    ) -> Tuple[bool, str]:
+        """Homebrew cask aracılığıyla macOS'a WARP kurar."""
+        if not shutil.which("brew"):
             return False, "Homebrew bulunamadı. Lütfen önce Homebrew kurun: https://brew.sh"
 
-        # Adım 2: pkg dosyasını bul ve installer ile kur
-        pkg_pattern = "/opt/homebrew/Caskroom/cloudflare-warp/*/Cloudflare_WARP_*.pkg"
-        # Intel Mac'ler için de kontrol et
-        pkg_pattern_intel = "/usr/local/Caskroom/cloudflare-warp/*/Cloudflare_WARP_*.pkg"
+        success, msg = self._run_install(
+            ["brew", "install", "--cask", "cloudflare-warp"],
+            on_output,
+        )
+        if not success and "already installed" not in msg.lower():
+            return False, msg
 
-        pkg_files = globmod.glob(pkg_pattern) + globmod.glob(pkg_pattern_intel)
+        pkg_files = (
+            globmod.glob("/opt/homebrew/Caskroom/cloudflare-warp/*/Cloudflare_WARP_*.pkg")
+            + globmod.glob("/usr/local/Caskroom/cloudflare-warp/*/Cloudflare_WARP_*.pkg")
+        )
         if not pkg_files:
             return False, "WARP .pkg dosyası bulunamadı. brew indirimi başarısız olmuş olabilir."
 
-        pkg_path = sorted(pkg_files)[-1]  # En son versiyonu al
-
+        pkg_path = sorted(pkg_files)[-1]
         if on_output:
             on_output(f"WARP paketi kuruluyor: {os.path.basename(pkg_path)}")
 
-        # installer komutu sudo gerektirir — osascript ile macOS'ta yetki iste
         success, msg = self._run_install(
             ["osascript", "-e",
              f'do shell script "installer -pkg \'{pkg_path}\' -target /" with administrator privileges'],
@@ -152,13 +205,17 @@ class WarpService:
             return True, "WARP başarıyla kuruldu"
         return False, msg
 
-    def _install_linux(self, on_output=None):
+    def _install_linux(
+        self, on_output: Optional[Callable[[str], None]] = None
+    ) -> Tuple[bool, str]:
+        """apt/dnf/yum aracılığıyla Linux'a WARP kurar."""
         if shutil.which("apt-get"):
             cmds = [
                 ["sudo", "mkdir", "-p", "--mode=0755", "/usr/share/keyrings"],
                 ["bash", "-c",
                  "curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg "
-                 "| sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg"],
+                 "| sudo gpg --yes --dearmor --output "
+                 "/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg"],
                 ["bash", "-c",
                  'echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] '
                  'https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" '
@@ -190,7 +247,12 @@ class WarpService:
         self._warp_cli_path = self._find_warp_cli()
         return True, f"WARP başarıyla kuruldu ({pm})"
 
-    def _run_install(self, cmd, on_output=None):
+    def _run_install(
+        self,
+        cmd: List[str],
+        on_output: Optional[Callable[[str], None]] = None,
+    ) -> Tuple[bool, str]:
+        """Tek bir kurulum komutunu çalıştırır ve çıktıyı aktarır."""
         try:
             if on_output:
                 on_output(f"Çalıştırılıyor: {' '.join(cmd)}")
@@ -198,7 +260,7 @@ class WarpService:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=WARP_INSTALL_TIMEOUT,
             )
             if on_output and result.stdout:
                 for line in result.stdout.strip().split("\n")[-3:]:
@@ -214,14 +276,14 @@ class WarpService:
             return False, "Kurulum zaman aşımına uğradı (5dk)"
         except FileNotFoundError:
             return False, f"Komut bulunamadı: {cmd[0]}"
-        except Exception as e:
+        except OSError as e:
             return False, str(e)
 
-    def install_instructions(self):
+    def install_instructions(self) -> str:
+        """Platforma özgü manuel kurulum komutunu döndürür."""
         system = platform.system()
         if system == "Windows":
             return "winget install -e --id Cloudflare.Warp"
-        elif system == "Darwin":
+        if system == "Darwin":
             return "brew install --cask cloudflare-warp"
-        else:
-            return "https://developers.cloudflare.com/warp-client/get-started/linux/"
+        return "https://developers.cloudflare.com/warp-client/get-started/linux/"
